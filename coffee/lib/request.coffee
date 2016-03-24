@@ -36,14 +36,20 @@ module.exports = (cache) ->
 			if (method == 'GET')
 				get_options = options
 				options = undefined
+				
+			_options = options;
 
 			options = {
 				method: method,
 				url: url,
 				headers: headers,
-				form: options,
+				form: _options,
 				qs: get_options
 			}
+			
+			if (options._isMultiPart === true)
+				delete options.form;
+				options.formData = _options;
 
 			request(options, (error, r, body) ->
 				response = undefined
