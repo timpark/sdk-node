@@ -56,7 +56,7 @@ module.exports = function(cache) {
         form: _options,
         qs: get_options
       };
-      if (options._isMultiPart === true) {
+      if (_options._isMultiPart === true) {
         delete options.form;
         options.formData = _options;
       }
