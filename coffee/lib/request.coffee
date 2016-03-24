@@ -49,6 +49,7 @@ module.exports = (cache) ->
 			
 			if (_options._isMultiPart == true)
 				delete options.form;
+				delete _options._isMultiPart;
 				options.formData = _options;
 
 			request(options, (error, r, body) ->
