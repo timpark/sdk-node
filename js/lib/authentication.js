@@ -22,7 +22,7 @@ module.exports = function(csrf_generator, cache, requestio) {
             secret: cache.secret_key
           }
         }, function(e, r, body) {
-          var k;
+          var error, k;
           if (e) {
             defer.reject(e);
             return defer.promise;
@@ -30,8 +30,8 @@ module.exports = function(csrf_generator, cache, requestio) {
             if (typeof body === "string") {
               try {
                 body = JSON.parse(body);
-              } catch (_error) {
-                e = _error;
+              } catch (error) {
+                e = error;
                 defer.reject(e);
               }
               if (typeof body === "object" && body.access_token && body.expires_in) {
@@ -57,15 +57,19 @@ module.exports = function(csrf_generator, cache, requestio) {
       }
       return defer.promise;
     },
-    redirect: function(provider, urlToRedirect, req, res) {
+    redirect: function(provider, urlToRedirect, req, res, next) {
       var csrf_token;
+      if (cache.logging) {
+        cache.log("[oauthio] Redirect to " + cache.oauthd_url + cache.oauthd_base + '/' + provider + " with k=" + cache.public_key + " and redirect_uri=" + urlToRedirect + " from " + (req.get && req.get('Host')));
+      }
       csrf_token = csrf_generator(req.session);
       res.writeHead(302, {
         Location: cache.oauthd_url + cache.oauthd_base + '/' + provider + '?k=' + cache.public_key + '&opts=' + encodeURIComponent(JSON.stringify({
           state: csrf_token
         })) + '&redirect_type=server&redirect_uri=' + encodeURIComponent(urlToRedirect)
       });
-      return res.end();
+      res.end();
+      return next();
     },
     auth: function(provider, session, opts) {
       var defer;
@@ -138,37 +142,70 @@ module.exports = function(csrf_generator, cache, requestio) {
           secret: cache.secret_key
         }
       }, function(e, r, body) {
-        var ref, response;
-        if (e) {
-          defer.reject(e);
-          return;
+        var doNext;
+        doNext = function() {
+          var error, ref, response;
+          if (e) {
+            defer.reject(e);
+            return;
+          }
+          try {
+            response = JSON.parse(body);
+          } catch (error) {
+            e = error;
+            defer.reject(new Error('OAuth.io response could not be parsed'));
+            return;
+          }
+          if (cache.logging) {
+            if (response.access_token) {
+              cache.hideInLog(response.access_token);
+            }
+            if (response.id_token) {
+              cache.hideInLog(response.id_token);
+            }
+            if (response.oauth_token) {
+              cache.hideInLog(response.oauth_token);
+            }
+            if (response.oauth_token_secret) {
+              cache.hideInLog(response.oauth_token_secret);
+            }
+            if (response.code) {
+              cache.hideInLog(response.code);
+            }
+            if (response.state) {
+              cache.hideInLog(response.state);
+            }
+            cache.log("[oauthio] From POST " + cache.oauthd_url + cache.oauthd_base + '/access_token (' + r.statusCode + '): ', body);
+          }
+          if ((response.status != null) && response.status === 'error' && (response.message != null)) {
+            defer.reject(new Error('OAuth.io / oauthd responded with : ' + response.message));
+          }
+          if (response.state == null) {
+            defer.reject(new Error('State is missing from response'));
+            return;
+          }
+          if (((session != null ? session.csrf_tokens : void 0) == null) || (ref = response.state, indexOf.call(session.csrf_tokens, ref) < 0)) {
+            if (cache.logging) {
+              cache.log('[oauthio] State is not matching: "' + response.state + '" not in session (' + (session != null ? session.oauthio_logging : void 0) + '):', session != null ? session.csrf_tokens : void 0);
+            }
+            defer.reject(new Error('State is not matching'));
+          }
+          if (response.expires_in) {
+            response.expires = new Date().getTime() + response.expires_in * 1000;
+          }
+          response = a.construct_request_object(response);
+          if ((session != null)) {
+            session.oauth = session.oauth || {};
+            session.oauth[response.provider] = response;
+          }
+          defer.resolve(response);
+        };
+        if ((typeof session.reload) === 'function') {
+          return session.reload(doNext);
+        } else {
+          cache.log('[oauthio] [warn] req.session should have a "reload" method');
+          return doNext();
         }
-        try {
-          response = JSON.parse(body);
-        } catch (_error) {
-          e = _error;
-          defer.reject(new Error('OAuth.io response could not be parsed'));
-          return;
-        }
-        if ((response.status != null) && response.status === 'error' && (response.message != null)) {
-          defer.reject(new Error('OAuth.io / oauthd responded with : ' + response.message));
-        }
-        if (response.state == null) {
-          defer.reject(new Error('State is missing from response'));
-          return;
-        }
-        if (((session != null ? session.csrf_tokens : void 0) == null) || (ref = response.state, indexOf.call(session.csrf_tokens, ref) < 0)) {
-          defer.reject(new Error('State is not matching'));
-        }
-        if (response.expires_in) {
-          response.expires = new Date().getTime() + response.expires_in * 1000;
-        }
-        response = a.construct_request_object(response);
-        if ((session != null)) {
-          session.oauth = session.oauth || {};
-          session.oauth[response.provider] = response;
-        }
-        return defer.resolve(response);
       });
       return defer.promise;
     }

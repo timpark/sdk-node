@@ -53,7 +53,8 @@ module.exports = function(cache) {
         method: method,
         url: url,
         headers: headers,
-        form: _options,
+        form: _options && !_options.json ? _options : null,
+        json: _options ? _options.json : null,
         qs: get_options
       };
       if (_options._isMultiPart === true) {
@@ -62,13 +63,13 @@ module.exports = function(cache) {
         options.formData = _options;
       }
       request(options, function(error, r, body) {
-        var response;
+        var error1, response;
         response = void 0;
-        if ((body != null) && r.statusCode === 200) {
+        if ((body != null) && r.statusCode >= 200 && r.statusCode < 300) {
           if (typeof body === 'string') {
             try {
               response = JSON.parse(body);
-            } catch (_error) {
+            } catch (error1) {
 
             }
           }
@@ -78,7 +79,12 @@ module.exports = function(cache) {
           defer.resolve(response);
           return;
         } else {
-          defer.reject("An error occured while performing the request");
+          defer.reject({
+            error: error,
+            body: body,
+            status: r.statusCode,
+            message: r.statusMessage
+          });
         }
         if (error) {
           return defer.reject(error);

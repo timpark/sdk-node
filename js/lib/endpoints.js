@@ -13,7 +13,6 @@ module.exports = function(csrf_generator, cache, authentication) {
     })(this));
     return app.get('/oauth/redirect', (function(_this) {
       return function(req, res) {
-        console.log('uh?', req.query, req.session);
         return authentication.authenticate((JSON.parse(req.query.oauthio)).data.code, req.session).then(function(r) {
           return cache.redirect_cb(r, req, res);
         }).fail(function(e) {
