@@ -43,7 +43,8 @@ module.exports = (cache) ->
 				method: method,
 				url: url,
 				headers: headers,
-				form: _options,
+				form: if _options && !_options.json then _options else null,
+				json: if _options then _options.json else null,
 				qs: get_options
 			}
 			
@@ -54,7 +55,7 @@ module.exports = (cache) ->
 
 			request(options, (error, r, body) ->
 				response = undefined
-				if body? and r.statusCode == 200
+				if body? and r.statusCode >= 200 and r.statusCode < 300
 					if typeof body is 'string'
 						try
 							response = JSON.parse body
@@ -64,7 +65,7 @@ module.exports = (cache) ->
 					defer.resolve response
 					return
 				else
-					defer.reject "An error occured while performing the request"
+					defer.reject {error:error,body:body,status:r.statusCode,message:r.statusMessage};
 				if error
 					defer.reject error
 			);
